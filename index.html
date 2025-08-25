@@ -1,0 +1,306 @@
+
+
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Asteroids 2D Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+
+    // 黒背景のみ
+
+        // 飛行機（ワイヤーフレーム）
+
+        const plane = {
+            x: width / 2,
+            y: height / 2,
+            angle: 0,
+            size: 40
+        };
+
+
+        // 爆発エフェクト
+        const explosions = [];
+        function createExplosion(x, y, color = '#00ffff') {
+            const lines = [];
+            const count = 7;
+            const length = 40;
+            for (let i = 0; i < count; i++) {
+                const angle = (Math.PI * 2 / count) * i;
+                const len = length + Math.random() * length;
+                lines.push({ angle, len });
+            }
+            explosions.push({ x, y, color, lines, frame: 0 });
+        }
+
+        function drawExplosions() {
+            ctx.save();
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 3;
+            ctx.shadowColor = '#00aaaa';
+            ctx.shadowBlur = 32;
+            for (const exp of explosions) {
+                for (const line of exp.lines) {
+                    const progress = exp.frame / 20;
+                    const ex = exp.x + Math.cos(line.angle) * line.len * progress;
+                    const ey = exp.y + Math.sin(line.angle) * line.len * progress;
+                    ctx.beginPath();
+                    ctx.moveTo(exp.x, exp.y);
+                    ctx.lineTo(ex, ey);
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }        
+        // 隕石
+        const asteroids = [];
+        function createAsteroid(x, y, size) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 2 + 1;
+            const vertexCount = Math.floor(Math.random() * 4) + 8;
+            const vertices = [];
+            for (let i = 0; i < vertexCount; i++) {
+                const a = (Math.PI * 2 / vertexCount) * i;
+                const r = size * (0.7 + Math.random() * 0.3);
+                vertices.push({
+                    x: Math.cos(a) * r,
+                    y: Math.sin(a) * r
+                });
+            }
+            return {
+                x, y, size, angle, speed, vertices,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed
+            };
+        }
+
+        // 初期隕石生成
+        for (let i = 0; i < 6; i++) {
+            let x = Math.random() * width;
+            let y = Math.random() * height;
+            // 飛行機の近くは避ける
+            if (Math.hypot(x - plane.x, y - plane.y) < 200) {
+                x += 200;
+                y += 200;
+            }
+            asteroids.push(createAsteroid(x, y, 60));
+        }
+
+        // 弾
+        const bullets = [];
+
+        // マウス座標
+        let mouseX = width / 2;
+        let mouseY = height / 2;
+
+        // イベント
+        canvas.addEventListener('mousemove', e => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        // スマホのタッチ操作対応
+        canvas.addEventListener('touchmove', e => {
+            if (e.touches.length > 0) {
+                const rect = canvas.getBoundingClientRect();
+                mouseX = e.touches[0].clientX - rect.left;
+                mouseY = e.touches[0].clientY - rect.top;
+            }
+        }, { passive: false });
+
+        function drawAsteroids() {
+            ctx.save();
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 2;
+            ctx.shadowColor = '#00aaaa';
+            ctx.shadowBlur = 32;
+            for (const asteroid of asteroids) {
+                ctx.save();
+                ctx.translate(asteroid.x, asteroid.y);
+                ctx.beginPath();
+                for (let i = 0; i < asteroid.vertices.length; i++) {
+                    const v = asteroid.vertices[i];
+                    if (i === 0) ctx.moveTo(v.x, v.y);
+                    else ctx.lineTo(v.x, v.y);
+                }
+                ctx.closePath();
+                ctx.stroke();
+                ctx.restore();
+            }
+            ctx.restore();
+        }
+
+    // 自動連射用フレームカウンタ
+    let bulletFrame = 0;
+
+        function drawBackground() {
+            ctx.save();
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, width, height);
+            ctx.restore();
+        }
+        function drawPlane() {
+            ctx.save();
+            ctx.translate(plane.x, plane.y);
+            ctx.rotate(plane.angle);
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 2;
+            ctx.shadowColor = '#00aaaa';
+            ctx.shadowBlur = 32;
+            ctx.beginPath();
+            ctx.moveTo(plane.size, 0);
+            ctx.lineTo(-plane.size * 0.6, plane.size * 0.5);
+            ctx.lineTo(-plane.size * 0.4, 0);
+            ctx.lineTo(-plane.size * 0.6, -plane.size * 0.5);
+            ctx.closePath();
+            ctx.stroke();
+            ctx.restore();
+        }
+        function drawBullets() {
+            ctx.save();
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 2;
+            ctx.shadowColor = '#00aaaa';
+            ctx.shadowBlur = 32;
+            for (const bullet of bullets) {
+                ctx.beginPath();
+                ctx.moveTo(bullet.x, bullet.y);
+                ctx.lineTo(
+                    bullet.x - Math.cos(bullet.angle) * 10,
+                    bullet.y - Math.sin(bullet.angle) * 10
+                );
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        let asteroidFrame = 0;
+    function update() {
+            // 飛行機の向き
+            plane.angle = Math.atan2(mouseY - plane.y, mouseX - plane.x);
+
+            // 自動連射（5フレームごと）
+            bulletFrame++;
+            if (bulletFrame % 5 === 0) {
+                const center = plane.angle;
+                const spread = Math.PI / 12; // 約15度
+                for (let i = -1; i <= 1; i++) {
+                    const angle = center + i * spread;
+                    bullets.push({
+                        x: plane.x + Math.cos(angle) * plane.size,
+                        y: plane.y + Math.sin(angle) * plane.size,
+                        angle: angle,
+                        speed: 8
+                    });
+                }
+            }
+
+            // 定期的に隕石追加（60フレームごと）
+            asteroidFrame++;
+            if (asteroidFrame % 60 === 0) {
+                let x = Math.random() * width;
+                let y = Math.random() * height;
+                // 飛行機の近くは避ける
+                if (Math.hypot(x - plane.x, y - plane.y) < 200) {
+                    x += 200;
+                    y += 200;
+                }
+                asteroids.push(createAsteroid(x, y, 60));
+            }
+
+            // 隕石の移動
+            for (const asteroid of asteroids) {
+                asteroid.x += asteroid.vx;
+                asteroid.y += asteroid.vy;
+                // 画面端でループ
+                if (asteroid.x < 0) asteroid.x += width;
+                if (asteroid.x > width) asteroid.x -= width;
+                if (asteroid.y < 0) asteroid.y += height;
+                if (asteroid.y > height) asteroid.y -= height;
+            }
+
+            // 弾の移動
+            for (const bullet of bullets) {
+                bullet.x += Math.cos(bullet.angle) * bullet.speed;
+                bullet.y += Math.sin(bullet.angle) * bullet.speed;
+            }
+            // 画面外の弾を削除
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                if (
+                    bullets[i].x < 0 || bullets[i].x > width ||
+                    bullets[i].y < 0 || bullets[i].y > height
+                ) {
+                    bullets.splice(i, 1);
+                }
+            }
+
+            // 弾と隕石の当たり判定・分裂・破壊
+            for (let bi = bullets.length - 1; bi >= 0; bi--) {
+                const b = bullets[bi];
+                for (let ai = asteroids.length - 1; ai >= 0; ai--) {
+                    const a = asteroids[ai];
+                    const dist = Math.hypot(b.x - a.x, b.y - a.y);
+                    if (dist < a.size) {
+                        // 分裂
+                        if (a.size > 25) {
+                            for (let s = 0; s < 2; s++) {
+                                asteroids.push(createAsteroid(a.x, a.y, a.size / 2));
+                            }
+                        }
+                        createExplosion(a.x, a.y);
+                        asteroids.splice(ai, 1);
+                        bullets.splice(bi, 1);
+                        break;
+                    }
+                }
+            }
+
+            // 爆発エフェクトの更新
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                explosions[i].frame++;
+                if (explosions[i].frame > 20) {
+                    explosions.splice(i, 1);
+                }
+            }
+        }
+
+        function loop() {
+            drawBackground();
+            drawAsteroids();
+            drawPlane();
+            drawBullets();
+            drawExplosions();
+            update();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+        window.addEventListener('resize', () => {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        });
+    </script>
+</body>
+</html>
